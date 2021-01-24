@@ -1,0 +1,485 @@
+---
+title: "IAS_COVID paper"
+author: "Ihoghosa Iyamu"
+date: "11/12/2020"
+output:
+  html_document:
+    df_print: paged
+    toc: yes
+    toc_depth: 2
+  word_document:
+    toc: yes
+    toc_depth: '2'
+  pdf_document:
+    latex_engine : lualatex
+    toc: yes
+    toc_depth: 2
+  html_notebook:
+    toc: yes
+    toc_depth: 2
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(MatchIt)
+require(SASxport)
+require(kableExtra)
+require(knitr)
+require(car)
+require(DataExplorer)
+require("tableone")
+require(Publish)
+require(mice)
+require(jtools)
+require(ggstance)
+require(broom.mixed)
+require(huxtable)
+require(dplyr)
+require(tidyverse)
+require(cobalt)
+require(survminer)
+```
+
+# Research Question 
+
+This study aims to assess if social media as a main source of information on COVID-19 is associated with perceived efficacy of face masks 
+
+## PICOT Table 
+
+| PICOT | Definition |
+|-|-|
+| Population of interest | Adults aged 18 and above in 6 sub-saharan countries |
+| Exposure of interest | Use of social media as main source of information on COVID-19 |
+| Control group | Not using social media as a main source of information on COVID-19 |
+| Outcomes of interest | Self-percieved risk of infection and efficacy of face masks | 
+| Timeframe | 2020 |
+|-|-|
+
+# Data import and preparation
+```{r data import}
+require (foreign)
+setwd("C:/Users/miyamu/OneDrive/Documents/Personal/COVID-19 papers")
+PARC <- read.spss("PARC_survey.sav", use.value.label=TRUE, to.data.frame=TRUE)
+##create analytic dataset 
+analytic.data<-select(PARC,
+                      Timestamp,
+                      Sex,
+                      Howwouldyoudescribeyourplaceofresidence, #residence
+                      Country,
+                      Confidence_current, #confidence in government response
+                      Age_group,
+                      Whatisthehighestlevelofeducationyouattained, #Level of education
+                      WhatisyouremploymentstatusIfmorethanonepleaserespondusingthemain, #employment
+                      HowdidyoufirstgettolearnaboutCOVID19,
+                      TV,
+                      Radio,
+                      SocialMedia,
+                      Friends,
+                      Familyrelatives,
+                      Onlineweb,
+                      Employer,
+                      Newspaper,
+                      Others,
+                      First_reaction_COVID,
+                      Risk_Percept_COVID,
+                      Facemask_efficacy)
+```
+
+```{r rename variables}
+#rename the variables
+names(analytic.data)<-c("ID",
+                    "Sex", "Residence", "Country",
+                    "Confidence.Response", "Age.category", "Level.of.education","Occupation",
+                    "First.info", "TV", "Radio", "Social.media",
+                    "Friends", "Family.relatives", "Online.Web", "Employer",
+                    "Newspaper", "Others", "Attitude.COVID", "Risk.perception", "Facemask.efficacy")
+
+#make factor variables 
+var.names<-c("Sex", "Residence", "Level.of.education", "First.info","Occupation",
+             "TV", "Radio", "Social.media", "Friends", "Family.relatives", 
+             "Online.Web", "Employer", "Newspaper","Attitude.COVID", "Others")
+analytic.data [var.names] <- lapply(analytic.data[var.names] , factor)
+str(analytic.data)
+```
+## Recode factor levels labeled '0' and '1'
+```{r}
+analytic.data$TV<-ifelse(analytic.data$TV == 0, "No", "Yes")
+table(analytic.data$TV, useNA = "always")
+
+analytic.data$Radio<-ifelse(analytic.data$Radio == 0, "No", "Yes")
+table(analytic.data$Radio, useNA = "always")
+
+analytic.data$Social.media<-ifelse(analytic.data$Social.media == 0, "No", "Yes")
+table(analytic.data$Social.media, useNA = "always")
+
+analytic.data$Friends<-ifelse(analytic.data$Friends == 0, "No", "Yes")
+table(analytic.data$Friends, useNA = "always")
+
+analytic.data$Family.relatives<-ifelse(analytic.data$Family.relatives == 0, "No", "Yes")
+table(analytic.data$Family.relatives, useNA = "always")
+
+analytic.data$Online.Web<-ifelse(analytic.data$Online.Web == 0, "No", "Yes")
+table(analytic.data$Online.Web, useNA = "always")
+
+analytic.data$Employer<-ifelse(analytic.data$Employer == 0, "No", "Yes")
+table(analytic.data$Employer, useNA = "always")
+
+analytic.data$Newspaper<-ifelse(analytic.data$Newspaper == 0, "No", "Yes")
+table(analytic.data$Newspaper, useNA = "always")
+
+analytic.data$Infosource.others<-ifelse(analytic.data$Others == 0, "No", "Yes")
+table(analytic.data$Infosource.others, useNA = "always")
+```
+## Recode other variable levels 
+```{r}
+
+#1. Level of education 
+analytic.data$Level.of.education<-car::recode(analytic.data$Level.of.education, 
+                                "c('Primary  ','Secondary')='Primary/Secondary'; 
+                                 c('Tertiary ') = 'Tertiary'; else=NA")
+table(analytic.data$Level.of.education, useNA = "always")
+
+#2. Attitude to COVID 
+analytic.data$Attitude.COVID<-car::recode(analytic.data$Attitude.COVID,
+                                          "c('Worry')='Worry';
+                                          c('Fear')='Fear';
+                                          c('Calm')='Calm';
+                                          c('Doubt')='Doubt';
+                                          c('Disinterest','Others')='Others'")
+table(analytic.data$Attitude.COVID, useNA = "always")
+
+#3. Occupation
+analytic.data$Occupation<-car::recode(analytic.data$Occupation,
+                                       "c('Government employed                         ', 'Hospital-based worker                       ',
+                                       'Non-governmental organization (NGO) employed', 'Private sector employed                     ',
+                                       'Self employed                               ') = 'Employed';
+                                       c('Retired                                     ', 'Unemployed                                  ') = 'Unemployed/retired'; 
+                                      c('Student                                     ')='Student'")
+```
+
+
+
+```{r}
+#Check missingness
+require(DataExplorer)
+plot_missing(analytic.data)
+```
+
+**Respondents who indicated "don't know" or "does not apply to my country" were excluded from the analysis**
+```{r}
+#complete case analysis
+analytic.data1<-subset(analytic.data, Facemask.efficacy != "NA")
+#exclude Tanzania
+analytic.data2<-subset(analytic.data1, Country != "Tanzania")
+plot_missing(analytic.data2)
+```
+## Drop unused levels
+```{r}
+analytic.data2$Country<-droplevels(analytic.data2$Country)
+```
+
+# Descriptive analysis 
+
+```{r}
+require(tableone)
+Table1<-(CreateTableOne(vars = c("Facemask.efficacy"),
+             data = analytic.data2, includeNA = TRUE, 
+             test = FALSE, addOverall = TRUE))
+PrintTable1<-print(Table1, showAllLevels = TRUE)
+```
+
+
+```{r pressure, echo=FALSE, results='hide'}
+require(tableone)
+Table2<-(CreateTableOne(vars = c("Facemask.efficacy","Sex", "Residence", "Country",
+                    "Confidence.Response", "Age.category", "Level.of.education",
+                    "TV", "Radio", "Occupation",
+                    "Friends", "Family.relatives", "Online.Web", "Employer",
+                    "Newspaper", "Infosource.others", "Risk.perception", "Attitude.COVID"),
+             data = analytic.data2, strata = 'Social.media', includeNA = TRUE, 
+             test = FALSE, addOverall = TRUE))
+PrintTable2<-print(Table2, showAllLevels = TRUE)
+```
+```{r}
+require(kableExtra)
+kable(PrintTable2, booktabs = TRUE) %>%
+kable_styling(latex_options = "scale_down")
+```
+
+# Bivariate analyis 
+```{r}
+form1<-as.formula(I(Facemask.efficacy=="Agree")~Social.media)
+fit1 <- glm(form1, data = analytic.data2, family = binomial(logit))
+publish(fit1)
+```
+```{r}
+form2<-as.formula(I(Facemask.efficacy=="Agree")~Sex)
+fit2 <- glm(form2, data = analytic.data2, family = binomial(logit))
+publish(fit2)
+```
+```{r}
+form3<-as.formula(I(Facemask.efficacy=="Agree")~Residence)
+fit3 <- glm(form3, data = analytic.data2, family = binomial(logit))
+publish(fit3)
+```
+```{r}
+form4<-as.formula(I(Facemask.efficacy=="Agree")~Country)
+fit4 <- glm(form4, data = analytic.data2, family = binomial(logit))
+publish(fit4)
+```
+```{r}
+form5<-as.formula(I(Facemask.efficacy=="Agree")~Confidence.Response)
+fit5 <- glm(form5, data = analytic.data2, family = binomial(logit))
+publish(fit5)
+```
+```{r}
+form6<-as.formula(I(Facemask.efficacy=="Agree")~Age.category)
+fit6 <- glm(form6, data = analytic.data2, family = binomial(logit))
+publish(fit6)
+```
+```{r}
+form7<-as.formula(I(Facemask.efficacy=="Agree")~Level.of.education)
+fit7 <- glm(form7, data = analytic.data2, family = binomial(logit))
+publish(fit7)
+```
+```{r}
+form8<-as.formula(I(Facemask.efficacy=="Agree")~Occupation)
+fit8 <- glm(form8, data = analytic.data2, family = binomial(logit))
+publish(fit8)
+```
+
+```{r}
+form9<-as.formula(I(Facemask.efficacy=="Agree")~TV)
+fit9 <- glm(form9, data = analytic.data2, family = binomial(logit))
+publish(fit9)
+```
+```{r}
+form10<-as.formula(I(Facemask.efficacy=="Agree")~Radio)
+fit10 <- glm(form10, data = analytic.data2, family = binomial(logit))
+publish(fit10)
+```
+```{r}
+form11<-as.formula(I(Facemask.efficacy=="Agree")~Friends)
+fit11 <- glm(form11, data = analytic.data2, family = binomial(logit))
+publish(fit11)
+```
+
+```{r}
+form12<-as.formula(I(Facemask.efficacy=="Agree")~Family.relatives)
+fit12 <- glm(form12, data = analytic.data2, family = binomial(logit))
+publish(fit12)
+```
+```{r}
+form13<-as.formula(I(Facemask.efficacy=="Agree")~Online.Web)
+fit13 <- glm(form13, data = analytic.data2, family = binomial(logit))
+publish(fit13)
+```
+```{r}
+form14<-as.formula(I(Facemask.efficacy=="Agree")~Employer)
+fit14 <- glm(form14, data = analytic.data2, family = binomial(logit))
+publish(fit14)
+```
+```{r}
+form15<-as.formula(I(Facemask.efficacy=="Agree")~Newspaper)
+fit15 <- glm(form15, data = analytic.data2, family = binomial(logit))
+publish(fit15)
+```
+```{r}
+form16<-as.formula(I(Facemask.efficacy=="Agree")~Risk.perception)
+fit16 <- glm(form16, data = analytic.data2, family = binomial(logit))
+publish(fit16)
+```
+```{r}
+form17<-as.formula(I(Facemask.efficacy=="Agree")~Attitude.COVID)
+fit17 <- glm(form17, data = analytic.data2, family = binomial(logit))
+publish(fit17)
+```
+# Multivariate analyses
+## Step-wise AIC model
+A step-wise AIC based model (with backward elimination) was fit after including a set of covariates identified in the literature to be associated with percieved efficacy of COVID-19 measures including mandatory mask wearing.
+**Citations:** [Prasetyo et. al, 2020](https://doi.org/10.1016/j.ijid.2020.07.074) & [Howard, 2020](https://doi.org/10.1016/j.paid.2020.110417)
+```{r}
+#stepwise but with a scope
+formula1 <- as.formula(I(Facemask.efficacy=="Agree")~Social.media+Sex+Residence+Country+
+                         Confidence.Response+Age.category+Level.of.education+Occupation+
+                         TV+Radio+Friends+Family.relatives+Online.Web+Employer+Newspaper+
+                         Risk.perception+Attitude.COVID)
+                    
+scope <- list(upper =~Social.media+Sex+Residence+Country+
+                         Confidence.Response+Age.category+Level.of.education+Occupation+
+                         TV+Radio+Friends+Family.relatives+Online.Web+Employer+Newspaper+
+                         Risk.perception+Attitude.COVID,
+              lower = ~Social.media
+                     +Risk.perception+Attitude.COVID+Age.category+Sex+Level.of.education+TV)
+fita <- glm(formula1, data = analytic.data2, 
+              family = binomial(logit))
+fitstep <- step(fita, scope = scope, trace = FALSE,
+                k = 2, direction = "backward")
+publish(fitstep)
+```
+## Assessing possible interactions 
+To the best of my knowledge, no evidence of model interactions. However, gender and age may be effect modifiers. Best to check
+*Recheck step with another test after review*
+```{r}
+fitb <- update(fitstep, .~. + interaction(Social.media,Sex))
+anova(fitstep, fitb, test = "LRT") # do not keep interaction
+```
+```{r}
+fitc <- update(fitstep, .~. + interaction(Social.media,Age.category))
+anova(fitstep, fitc, test = "LRT") # do not keep interaction
+```
+## Final Model
+```{r}
+publish(fitstep)
+vif(fitstep)
+```
+## Model diagnostics 
+Not necessarily important since it is not a predictive model
+```{r}
+require(pROC)
+pred.y <- predict(fitstep, type = "response")
+rocobj <- roc(analytic.data2$Facemask.efficacy, pred.y)
+rocobj
+auc(rocobj)
+```
+```{r, Hosmer-lemeshow test}
+require(ResourceSelection)
+hl<-hoslem.test(fitstep$y, fitted(fitstep))
+hl
+```
+There is no evidence of a lack of fit in this model
+
+#Propensity score analysis
+##issue unique ID per row
+```{r}
+analytic.data2$ID1 <- 1:nrow(analytic.data2)
+```
+
+## Prepare the data 
+```{r, results='hide'}
+str(analytic.data2)
+dim(analytic.data2)
+var.names<-c("TV","Radio","Social.media","Friends", "Family.relatives", 
+             "Online.Web", "Employer", "Newspaper", "Infosource.others")
+analytic.data2[var.names] <- lapply(analytic.data2[var.names] , factor)
+str(analytic.data2)
+# ...
+```
+##Format variables 
+```{r, results='hide'}
+
+# Outcome recode
+analytic.data2$Facemask.efficacy <- ifelse(analytic.data2$Facemask.efficacy == "Agree", 1, 0)
+
+# Exposure recode
+analytic.data2$Social.media <- ifelse(analytic.data2$Social.media == "Yes", 1, 0) 
+
+dim(analytic.data2)
+
+```
+
+
+## Set seed
+```{r}
+# set a seed
+set.seed(346)
+```
+
+# (optional) Propensity score matching analysis by Austin P. C., Jembere N. and Chiu M. (2018)
+
+## Step 1
+
+```{r}
+##
+# response = exposure variable
+# independent variables = baseline covariates
+ps.formula <- as.formula(Social.media~Sex+Residence+Country+
+                         Confidence.Response+Age.category+Level.of.education+Occupation+
+                         TV+Radio+Friends+Family.relatives+Online.Web+Employer+Newspaper+
+                         +Others+Risk.perception+Attitude.COVID+First.info+Infosource.others)
+
+ps.fit <- glm(ps.formula, data = analytic.data2, family=binomial(logit))
+analytic.data2$PS <- fitted(ps.fit)
+summary(analytic.data2$PS)
+```
+## Step 2
+
+
+```{r}
+##
+require(Matching)
+match.obj2 <- Match(Y=analytic.data2$Facemask.efficacy, 
+                    Tr=analytic.data2$Social.media, 
+                    X=analytic.data2$PS, 
+                    M=1, 
+                    estimand = "ATT",
+                    replace=FALSE, 
+                    caliper = 0.2)
+summary(match.obj2)
+matched.data2 <- analytic.data2[c(match.obj2$index.treated, 
+                                 match.obj2$index.control),]
+dim(matched.data2)
+```
+
+```{r, cache=TRUE}
+require(MatchIt)
+set.seed(346)
+match.obj <- matchit(ps.formula, data = analytic.data2,
+                     distance = analytic.data2$PS, 
+                     method = "nearest", 
+                     replace=FALSE,
+                     caliper = .2, 
+                     ratio = 1)
+analytic.data2$PS <- match.obj$distance
+summary(match.obj$distance)
+plot(match.obj, type = "jitter")
+plot(match.obj, type = "hist")
+tapply(analytic.data2$PS, analytic.data2$Social.media, summary)
+# check how many matched
+match.obj
+# extract matched data
+matched.data2 <- match.data(match.obj)
+dim(matched.data2)
+```
+## Step 3
+
+```{r}
+##
+baselinevars <- c("Sex", "Residence", "Country",
+                    "Confidence.Response", "Age.category", "Level.of.education","Occupation",
+                    "TV", "Radio", "Friends", "Family.relatives", "Online.Web", "Employer",
+                    "Newspaper", "Others", "Attitude.COVID", "Risk.perception", "Facemask.efficacy")
+tab1m <- CreateTableOne(strata = "Social.media", 
+                           vars = baselinevars,
+                           data = analytic.data2, test = FALSE)
+print(tab1m, smd = TRUE)
+```
+
+```{r}
+tab2m <- CreateTableOne(strata = "Social.media", 
+                           vars = baselinevars,
+                           data = matched.data2, test = FALSE)
+print(tab2m, smd = TRUE)
+```
+
+## Step 4
+
+```{r}
+##
+analytic.data2$matched <- 0
+length(analytic.data2$ID) # full data
+length(matched.data2$ID) # matched data
+length(analytic.data2$ID[analytic.data2$ID %in% matched.data2$ID])
+analytic.data2$matched[analytic.data2$ID %in% matched.data2$ID] <- 1
+table(analytic.data2$matched)
+
+```
+
+```{r, warning=FALSE}
+out.formula <- as.formula(Facemask.efficacy ~ Social.media)
+ps.fit2 <- glm(out.formula, data = matched.data2, family = binomial(logit))
+publish(ps.fit2)
+```
+
+
+
