@@ -1,0 +1,111 @@
+---
+title: "COVID Risk perception_OLR"
+author: "Ihoghosa Iyamu"
+date: "1/8/2021"
+output:
+  word_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(MatchIt)
+require(SASxport)
+require(kableExtra)
+require(knitr)
+require(car)
+require(DataExplorer)
+require("tableone")
+require(Publish)
+require(mice)
+require(jtools)
+require(ggstance)
+require(broom.mixed)
+require(huxtable)
+require(dplyr)
+require(tidyverse)
+require(cobalt)
+require(survminer)
+```
+
+# Data import
+```{r}
+require(foreign)
+setwd("C:/Users/miyamu/OneDrive/Documents/Personal/COVID-19 papers")
+Covid_risk <- read.spss("COVID Risk perception_Dataset.sav", use.value.label=TRUE, to.data.frame=TRUE)
+View(Covid_risk)
+```
+
+# Data exploration 
+```{r}
+head(Covid_risk)
+```
+
+## Correct data format issues 
+```{r}
+str(Covid_risk)
+```
+## create table 1
+
+```{r}
+require("tableone")
+tab1 <- CreateTableOne(vars = c("RiskLevel", "Reason_Risk", "Sex", 
+                                "AgeGroup", "Residence", "HighestEdu",
+                                "Country", "Employment_Status"),
+                                data = Covid_risk)
+print(tab1, showAllLevels = TRUE)
+```
+## Set exclusion criteria 
+```{r}
+#Exclude Liberia for small sample size
+Covid_risk1<-subset(Covid_risk, Country !="Liberia")
+Covid_risk1$Country<- droplevels(Covid_risk1$Country)
+Covid_risk1$Sex<- droplevels(Covid_risk1$Sex)
+```
+
+## Recheck table 1
+```{r}
+tab1 <- CreateTableOne(vars = c("RiskLevel", "Reason_Risk", "Sex", 
+                                "AgeGroup", "Residence", "HighestEdu",
+                                "Country", "Employment_Status"),
+                                data = Covid_risk1)
+print(tab1, showAllLevels = TRUE)
+```
+## Order the outcome variable
+```{r}
+Covid_risk1$RiskLevel=relevel(Covid_risk1$RiskLevel, ref="High")
+Covid_risk1$RiskLevel1 = factor(Covid_risk1$RiskLevel, levels=c("Zero", 
+                                            "Low", "Medium",
+                                            "High"), 
+                      ordered=TRUE)
+```
+
+## Relevel covariates 
+```{r}
+Covid_risk1$AgeGroup=relevel(Covid_risk1$AgeGroup, ref=">54")
+Covid_risk1$Residence=relevel(Covid_risk1$Residence, ref="Peri-urban")
+Covid_risk1$HighestEdu=relevel(Covid_risk1$HighestEdu, ref="Tertiary")
+Covid_risk1$Country=relevel(Covid_risk1$Country, ref="Zimbabwe")
+Covid_risk1$Employment_Status=relevel(Covid_risk1$Employment_Status, ref="Government")
+```
+
+
+## Ordinal logistic regression
+```{r olr, cache=TRUE}
+require(rms)
+fit1olr <- rms::orm (RiskLevel1 ~ AgeGroup + Sex + Residence + HighestEdu
+                + Country + Employment_Status, 
+                data=Covid_risk1, x=TRUE, y=TRUE)
+print(fit1olr, coefs = FALSE)
+fit1olr
+ols_table<-print(kable(round(exp(cbind(coef(fit1olr), confint(fit1olr))),3)))
+print(ols_table)
+anova(fit1olr)
+```
+```{r}
+write.csv(ols_table, "ols_table", append = FALSE, col.names = TRUE, na = "NA")
+```
+
+
+
+
