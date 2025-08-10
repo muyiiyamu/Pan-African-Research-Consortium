@@ -59,8 +59,8 @@ This study aims to assess if social media as a main source of information on COV
 ```{r data import}
 require (foreign)
 setwd("C:/Users/miyamu/OneDrive/Documents/Personal/COVID-19 papers")
-PARC <- read.spss("PARC_survey.sav", use.value.label=TRUE, to.data.frame=TRUE)
-##create analytic dataset 
+PARC <- read.spss("PARC_survey.sav", use.value.labels=TRUE, to.data.frame=TRUE) # use.value.labels retains SPSS value labels
+##create analytic dataset
 analytic.data<-select(PARC,
                       Timestamp,
                       Sex,

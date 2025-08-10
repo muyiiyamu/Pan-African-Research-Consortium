@@ -32,7 +32,7 @@ require(survminer)
 ```{r}
 require(foreign)
 setwd("C:/Users/miyamu/OneDrive/Documents/Personal/COVID-19 papers")
-Covid_risk <- read.spss("COVID Risk perception_Dataset.sav", use.value.label=TRUE, to.data.frame=TRUE)
+Covid_risk <- read.spss("COVID Risk perception_Dataset.sav", use.value.labels=TRUE, to.data.frame=TRUE) # use.value.labels preserves SPSS value labels
 View(Covid_risk)
 ```
 
